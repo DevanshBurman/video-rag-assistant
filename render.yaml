@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: video-rag-assistant
+    runtime: docker
+    plan: starter
+    region: oregon
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: MISTRAL_MODEL
+        value: open-mistral-7b
+      - key: WHISPER_MODEL
+        value: base
+      - key: SARVAM_API_KEY
+        sync: false

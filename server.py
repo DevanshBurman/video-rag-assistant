@@ -306,6 +306,7 @@ async def export_txt(task_id: str):
 # ── Entrypoint ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("\n[*] AI Video Assistant - Starting server...")
-    print("    Open http://localhost:8000 in your browser\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+    port = int(os.environ.get("PORT", 8000))
+    print(f"\n[*] AI Video Assistant - Starting server on port {port}...")
+    print(f"    Access URL: http://0.0.0.0:{port}\n")
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)

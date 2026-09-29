@@ -91,6 +91,30 @@ http://localhost:8000
 
 ---
 
+## ☁️ Cloud Deployment
+
+### Deploy on Render (Recommended)
+1. Go to [Render Dashboard](https://dashboard.render.com/) and click **New → Web Service**.
+2. Connect your GitHub repository: `DevanshBurman/video-rag-assistant`.
+3. Select **Docker** as the runtime (Render will automatically detect the [`Dockerfile`](Dockerfile)).
+4. Under **Instance Type**, select **Starter** (or higher, since Whisper + PyTorch benefits from 1GB+ RAM).
+5. Under **Environment Variables**, add:
+   - `MISTRAL_API_KEY`: Your Mistral AI API key
+   - `MISTRAL_MODEL`: `open-mistral-7b`
+   - `WHISPER_MODEL`: `base`
+6. Click **Deploy Web Service**!
+
+### Deploy on Railway
+1. Go to [Railway Dashboard](https://railway.app/) and click **New Project → Deploy from GitHub repo**.
+2. Select `video-rag-assistant`.
+3. In service **Variables**, add:
+   - `MISTRAL_API_KEY`: Your Mistral AI API key
+   - `MISTRAL_MODEL`: `open-mistral-7b`
+   - `WHISPER_MODEL`: `base`
+4. Railway will automatically build the Dockerfile with FFmpeg pre-installed and assign a live public domain!
+
+---
+
 ## 📦 Project Structure
 
 ```
