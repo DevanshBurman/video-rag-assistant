@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Assistant — Video Intelligence Studio</title>
+    <meta name="description" content="Light-native, 3D video intelligence studio with Whisper speech transcription, Mistral 7B synthesis, LangChain retrieval, and ChromaDB vector search.">
+    <meta name="theme-color" content="#F5F8FA" id="meta-theme-color">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+    
+    <!-- Zero-Flash Theme Initialization -->
+    <script>
+        (function() {
+            try {
+                var stored = localStorage.getItem("ai_video_theme");
+                var theme = "light";
+                if (stored === "dark" || stored === "light") {
+                    theme = stored;
+                } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+                    theme = "dark";
+                }
+                document.documentElement.setAttribute("data-theme", theme);
+                var meta = document.getElementById("meta-theme-color");
+                if (meta) meta.setAttribute("content", theme === "dark" ? "#0A1822" : "#F5F8FA");
+            } catch (e) {}
+        })();
+    </script>
+
+    <!-- Google Fonts: Space Grotesk, Plus Jakarta Sans, Inter, JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Pinned Three.js for real-time 3D interactive centerpiece -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <link rel="stylesheet" href="/static/styles.css?v=satquery-clean-v4">
+</head>
+<body class="app-body">
+
+    <!-- ── Atmospheric Background Layer ─────────────────────────────────── -->
+    <div class="ambient-backdrop" aria-hidden="true">
+        <div class="ambient-radial radial-aqua"></div>
+        <div class="ambient-radial radial-soft"></div>
+        <div class="perspective-grid-mesh" id="perspective-grid"></div>
+    </div>
+
+    <!-- ── APP LAYOUT WRAPPER ───────────────────────────────────────────── -->
+    <div class="app-layout">
+
+        <!-- ── 1. LEFT DEEP-NAVY ICON RAIL ──────────────────────────────── -->
+        <aside class="side-rail" id="side-rail" aria-label="Main Navigation">
+            <div class="rail-top">
+                <!-- Top Brand Icon Button with Q-Prism Emblem -->
+                <button type="button" class="rail-brand-btn" id="rail-brand-btn" title="AI Video Assistant Home" aria-label="Home">
+                    <svg viewBox="0 0 40 40" fill="none" class="rail-logo-svg">
+                        <circle cx="20" cy="20" r="16" stroke="#36D5D0" stroke-width="2" opacity="0.8" />
+                        <circle cx="20" cy="20" r="11" fill="none" stroke="#22BFC0" stroke-width="1.5" />
+                        <path d="M28 28L34 34" stroke="#36D5D0" stroke-width="2.5" stroke-linecap="round" />
+                        <circle cx="20" cy="20" r="5" fill="#36D5D0" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Primary Navigation Rails -->
+            <nav class="rail-nav" aria-label="Primary Navigation">
+                <button type="button" class="rail-item active" id="rail-btn-studio" data-view="idle" title="Studio / Ingest (1)" aria-label="Studio Ingest">
+                    <div class="rail-icon-wrap">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="20" height="20" rx="4"></rect>
+                            <path d="M12 8v8M8 12h8"></path>
+                        </svg>
+                    </div>
+                    <span class="rail-tooltip">Studio Ingest</span>
+                </button>
+
+                <button type="button" class="rail-item" id="rail-btn-analysis" data-view="processing" title="Analysis Pipeline (2)" aria-label="Analysis Pipeline">
+                    <div class="rail-icon-wrap">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="20" x2="18" y2="10"></line>
+                            <line x1="12" y1="20" x2="12" y2="4"></line>
+                            <line x1="6" y1="20" x2="6" y2="14"></line>
+                        </svg>
+                    </div>
+                    <span class="rail-tooltip">Analysis Pipeline</span>
+                </button>
+
+                <button type="button" class="rail-item" id="rail-btn-results" data-view="results" title="Results & RAG (3)" aria-label="Results and RAG">
+                    <div class="rail-icon-wrap">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                    </div>
+                    <span class="rail-tooltip">Intelligence Results</span>
+                </button>
+
+                <button type="button" class="rail-item" id="rail-btn-history" title="Recent Sessions" aria-label="Recent Analyses">
+                    <div class="rail-icon-wrap">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                    </div>
+                    <span class="rail-tooltip">Session History</span>
+                </button>
+            </nav>
+
+            <!-- Bottom Rail Tools: Help, Theme Switcher, Settings, Avatar -->
+            <div class="rail-bottom">
+                <button type="button" class="rail-item" id="rail-btn-explore" title="How It Works / Architecture" aria-label="How it works">
+                    <div class="rail-icon-wrap">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
+                    <span class="rail-tooltip">Architecture Tour</span>
+                </button>
+
+                <button type="button" class="rail-item" id="rail-theme-toggle" title="Toggle Light / Dark theme" aria-label="Switch Theme" aria-pressed="false">
+                    <div class="rail-icon-wrap">
+                        <!-- Sun Icon (shown in dark mode) -->
+                        <svg class="theme-icon icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                        <!-- Moon Icon (shown in light mode) -->
+                        <svg class="theme-icon icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                    </div>
+                    <span class="rail-tooltip">Toggle Theme</span>
+                </button>
+
+                <div class="rail-avatar" title="User Session Profile: AI Video Assistant">
+                    <span class="avatar-initials">VA</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ── MAIN APP VIEWPORT ────────────────────────────────────────── -->
+        <div class="app-main-viewport">
+
+            <!-- ── 2. WHITE TOP BAR ─────────────────────────────────────── -->
+            <header class="top-nav" id="top-nav">
+                <div class="nav-container">
+                    
+                    <!-- Left: Brand Logo + Hairline Divider + Subtitle -->
+                    <div class="nav-brand-group">
+                        <div class="brand-logo-mark">
+                            <svg viewBox="0 0 32 32" fill="none" class="brand-svg-mark">
+                                <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="1.8" opacity="0.3"/>
+                                <circle cx="16" cy="16" r="9" stroke="#36D5D0" stroke-width="2"/>
+                                <path d="M22 22L27 27" stroke="#36D5D0" stroke-width="2.5" stroke-linecap="round"/>
+                                <circle cx="16" cy="16" r="4" fill="#0966ED"/>
+                            </svg>
+                        </div>
+                        <div class="brand-titles">
+                            <span class="brand-title">AI Video Assistant</span>
+                            <span class="brand-divider" aria-hidden="true">|</span>
+                            <span class="brand-subtitle">Video intelligence studio</span>
+                        </div>
+                    </div>
+
+                    <!-- Center: 3-Step Navigation with active blue underline -->
+                    <nav class="nav-steps-center" aria-label="Analysis Workflow">
+                        <button type="button" class="nav-step-link active" id="nav-step-ingest" data-step="idle">
+                            <span class="step-num">01</span>
+                            <span class="step-title">Ingest</span>
+                            <span class="step-underline" aria-hidden="true"></span>
+                        </button>
+                        <span class="nav-step-dot" aria-hidden="true">·</span>
+                        <button type="button" class="nav-step-link" id="nav-step-analysis" data-step="processing">
+                            <span class="step-num">02</span>
+                            <span class="step-title">Analysis</span>
+                            <span class="step-underline" aria-hidden="true"></span>
+                        </button>
+                        <span class="nav-step-dot" aria-hidden="true">·</span>
+                        <button type="button" class="nav-step-link" id="nav-step-results" data-step="results">
+                            <span class="step-num">03</span>
+                            <span class="step-title">Results</span>
+                            <span class="step-underline" aria-hidden="true"></span>
+                        </button>
+                    </nav>
+
+                    <!-- Right: Engine Status Pill + How It Works + Reset / New Analysis -->
+                    <div class="nav-actions-group">
+                        <div class="status-pill-3d" title="FastAPI and Core RAG pipeline status">
+                            <div class="beacon-ring-wrap">
+                                <span class="beacon-ring"></span>
+                                <span class="beacon-core"></span>
+                            </div>
+                            <span class="status-label">FastAPI Engine Ready</span>
+                        </div>
+
+                        <button type="button" class="btn-text-action" id="top-how-it-works-btn">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                            <span>How it works</span>
+                        </button>
+
+                        <button type="button" class="btn-theme-pill" id="top-theme-toggle" aria-label="Toggle Dark and Light mode">
+                            <svg class="theme-icon icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                            <svg class="theme-icon icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                        </button>
+
+                        <button id="nav-reset-btn" class="nav-btn-action hidden" type="button" title="Start a fresh analysis">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 5v14M5 12h14"/>
+                            </svg>
+                            <span>New Ingestion</span>
+                        </button>
+                    </div>
+
+                </div>
+            </header>
+
+            <!-- ── MAIN CONTENT WORKSPACE ───────────────────────────────── -->
+            <main class="main-content" id="main-content-area">
+
+                <!-- ═══════════════════════════════════════════════════════════
+                     VIEW 1: IDLE / STUDIO CANVAS
+                     ═══════════════════════════════════════════════════════════ -->
+                <div class="view-container view-idle" id="view-idle">
+                    
+                    <!-- Studio Header / Eyebrow & Big Tight-Tracked Navy Headline -->
+                    <section class="studio-intro" id="hero-section">
+                        <div class="eyebrow-chip">
+                            <span class="eyebrow-dot"></span>
+                            <span class="eyebrow-text">VIDEO ASSISTANT / ANALYSIS STUDIO</span>
+                        </div>
+                        <h1 class="studio-headline">
+                            Drop a video. <span class="headline-accent">Ask anything.</span>
+                        </h1>
+                        <p class="studio-subtext">
+                            Transcribe speech with sub-second accuracy, extract executive summaries and discrete commitments, then interrogate video knowledge via ChromaDB RAG.
+                        </p>
+                    </section>
+
+                    <!-- Two-Column Studio Canvas: Source Canvas (Left) + Ask Panel Preview (Right) -->
+                    <section class="studio-canvas-grid" id="input-section">
+                        
+                        <!-- LEFT CARD: Source Canvas (Tabs, Empty State / URL / Drop Zone) -->
+                        <div class="card-3d studio-card source-card" id="main-input-card">
+                            <div class="card-sheen"></div>
+                            
+                            <div class="card-header-row">
+                                <div class="card-title-group">
+                                    <span class="card-eyebrow">SOURCE INGESTION</span>
+                                    <h2 class="card-title">Select or Drop Video</h2>
+                                </div>
+
+                                <!-- 3D Segmented Switcher: YouTube URL vs File Upload -->
+                                <div class="segmented-control-3d" id="segmented-control" role="tablist">
+                                    <div class="segment-slider" id="segment-slider"></div>
+                                    <button type="button" class="segment-btn active" id="tab-url-btn" data-mode="url" role="tab" aria-selected="true">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg>
+                                        <span>YouTube URL</span>
+                                    </button>
+                                    <button type="button" class="segment-btn" id="tab-file-btn" data-mode="file" role="tab" aria-selected="false">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                        <span>Upload File</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Panel 1: URL Mode -->
+                            <div class="input-panel active" id="panel-url" role="tabpanel">
+                                <div class="url-input-wrapper">
+                                    <div class="input-icon-decor">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                                    </div>
+                                    <input type="url" id="youtube-url-input" class="modern-input" placeholder="Paste YouTube link (e.g. https://www.youtube.com/watch?v=...)" autocomplete="off">
+                                    <button type="button" class="input-clear-btn hidden" id="clear-url-btn" title="Clear input" aria-label="Clear URL">✕</button>
+                                </div>
+                                <div class="input-format-chips">
+                                    <span class="format-chip">YouTube Videos</span>
+                                    <span class="format-chip">YouTube Shorts</span>
+                                    <span class="format-chip">Recorded Streams</span>
+                                </div>
+                            </div>
+
+                            <!-- Panel 2: File Upload Mode & Empty State -->
+                            <div class="input-panel hidden" id="panel-file" role="tabpanel">
+                                <div class="drop-zone-3d" id="drop-zone" tabindex="0" role="button" aria-label="Drop video file or click to browse">
+                                    <!-- Reference-style centered icon tile with teal CTA -->
+                                    <div class="empty-icon-tile">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22BFC0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                            <polyline points="14 2 14 8 20 8"></polyline>
+                                            <path d="M12 18v-6"></path>
+                                            <path d="m9 15 3-3 3 3"></path>
+                                        </svg>
+                                    </div>
+                                    <h3 class="empty-state-title">Drop your video or audio file here</h3>
+                                    <p class="empty-state-sub">Supported containers: MP4, MP3, WAV, MKV, M4A, WEBM, FLAC</p>
+                                    <button type="button" class="teal-cta-btn" id="empty-state-browse-btn">
+                                        <span>Browse Local Files</span>
+                                        <span class="btn-arrow">→</span>
+                                    </button>
+                                    <input type="file" id="file-input" hidden accept=".mp3,.mp4,.wav,.m4a,.webm,.ogg,.flac,.mkv,.avi">
+                                </div>
+
+                                <!-- Selected File Pill Display -->
+                                <div class="selected-file-pill hidden" id="selected-file-pill">
+                                    <div class="file-pill-icon">
+                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                                    </div>
+                                    <div class="file-pill-details">
+                                        <span class="file-pill-name" id="selected-file-name">recording.mp4</span>
+                                        <span class="file-pill-size" id="selected-file-size">0 MB</span>
+                                    </div>
+                                    <button type="button" class="file-pill-remove" id="remove-file-btn" title="Remove selected file" aria-label="Remove selected file">✕</button>
+                                </div>
+                            </div>
+
+                            <!-- Source Options Footer: Language Select & Primary Blue Analyze Button -->
+                            <div class="card-controls-row">
+                                <div class="select-field-wrap">
+                                    <label for="language-select" class="field-label">TRANSCRIPTION LANGUAGE</label>
+                                    <div class="custom-select-box">
+                                        <select id="language-select" class="modern-select">
+                                            <option value="english">English (Global Default)</option>
+                                            <option value="hinglish">Hinglish (Hindi + English Mixed)</option>
+                                        </select>
+                                        <span class="select-chevron">▾</span>
+                                    </div>
+                                </div>
+
+                                <button type="button" id="start-analysis-btn" class="primary-action-btn" disabled>
+                                    <span>Analyze Video</span>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                                </button>
+                            </div>
+
+                            <!-- Session Recent Sources List -->
+                            <div class="recent-sources-tray hidden" id="recent-sources-tray">
+                                <span class="recent-tray-title">RECENT SOURCES IN THIS SESSION:</span>
+                                <div class="recent-tags-row" id="recent-sources-list"></div>
+                            </div>
+
+                        </div>
+
+                        <!-- RIGHT CARD: "Ask" Panel Preview & Suggestion Cards -->
+                        <div class="card-3d studio-card ask-preview-card" id="ask-preview-card">
+                            <div class="card-sheen"></div>
+                            <div class="card-header-row">
+                                <div class="card-title-group">
+                                    <span class="card-eyebrow">CONVERSATION / RAG</span>
+                                    <h2 class="card-title">Ask the Evidence</h2>
+                                </div>
+                                <span class="badge-lock-preview">Ready upon ingest</span>
+                            </div>
+
+                            <p class="ask-card-desc">
+                                Once indexed, query specific segments, confirm decisions, or request specialized breakdowns directly against transcript embeddings.
+                            </p>
+
+                            <!-- Suggestion Workflow Cards (styled like reference cards) -->
+                            <div class="suggestion-cards-column">
+                                <div class="workflow-card" data-suggest="What are the key decisions and executive takeaways?">
+                                    <span class="wf-cat">EXECUTIVE SUMMARY</span>
+                                    <p class="wf-title">What are the core conclusions and critical takeaways?</p>
+                                    <span class="wf-arrow">→</span>
+                                </div>
+                                <div class="workflow-card" data-suggest="What actionable tasks and deadlines were assigned?">
+                                    <span class="wf-cat">COMMITMENTS</span>
+                                    <p class="wf-title">What actionable tasks and assigned owners were stated?</p>
+                                    <span class="wf-arrow">→</span>
+                                </div>
+                                <div class="workflow-card" data-suggest="What important questions were left unanswered?">
+                                    <span class="wf-cat">UNRESOLVED</span>
+                                    <p class="wf-title">What open questions were left for subsequent follow-up?</p>
+                                    <span class="wf-arrow">→</span>
+                                </div>
+                            </div>
+
+                            <!-- Mock Disabled Chat Input Area -->
+                            <div class="preview-prompt-box">
+                                <textarea class="preview-textarea" placeholder="Unlock interactive RAG Q&A once your video is analyzed..." disabled></textarea>
+                                <div class="preview-prompt-bar">
+                                    <span class="preview-badge-status">Vector DB: ChromaDB Ready</span>
+                                    <button type="button" class="preview-send-btn" disabled>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </section>
+
+                    <!-- Trust Footer Strip below Studio -->
+                    <div class="trust-footer-strip">
+                        <div class="trust-badge">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22BFC0" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            <span>Session Integrity &amp; Privacy: Your files stay in this session. Local vector embeddings with ChromaDB and private inference.</span>
+                        </div>
+                    </div>
+
+                    <!-- Architecture & Tech Stack Feature Cards Grid -->
+                    <section class="features-section" id="features-section">
+                        <div class="features-header">
+                            <span class="features-sub">CORE ENGINE ARCHITECTURE</span>
+                            <h2 class="features-title">Engineered for Multimodal Intelligence</h2>
+                        </div>
+
+                        <div class="features-grid">
+                            <!-- Feature 1: Whisper AI -->
+                            <article class="card-3d glass-panel feature-card">
+                                <div class="feature-icon-badge">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#36D5D0" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                                </div>
+                                <h3 class="feature-card-title">Whisper AI Transcription</h3>
+                                <p class="feature-card-desc">High-precision acoustic modeling with automatic 10-minute segmenting, speaker handling, and English + Hinglish phoneme decoding.</p>
+                            </article>
+
+                            <!-- Feature 2: Mistral 7B LLM -->
+                            <article class="card-3d glass-panel feature-card">
+                                <div class="feature-icon-badge">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0966ED" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                                </div>
+                                <h3 class="feature-card-title">Mistral 7B Synthesis</h3>
+                                <p class="feature-card-desc">Transforms dense video transcripts into structured executive overviews, extracted commitments, and discrete architectural decisions.</p>
+                            </article>
+
+                            <!-- Feature 3: ChromaDB Vector RAG -->
+                            <article class="card-3d glass-panel feature-card">
+                                <div class="feature-icon-badge">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#36D5D0" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                                </div>
+                                <h3 class="feature-card-title">ChromaDB Vector RAG</h3>
+                                <p class="feature-card-desc">Embeds transcript passages into dense vector space, retrieving pinpoint context snippets to ground responses with zero hallucinations.</p>
+                            </article>
+
+                            <!-- Feature 4: Universal Ingestion -->
+                            <article class="card-3d glass-panel feature-card">
+                                <div class="feature-icon-badge">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22BFC0" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                                </div>
+                                <h3 class="feature-card-title">Universal Format Ingestion</h3>
+                                <p class="feature-card-desc">Direct ingestion from YouTube URLs or local MP4, MP3, WAV, MKV, M4A, and WEBM media with automated stream conversion.</p>
+                            </article>
+
+                            <!-- Feature 5: Bilingual Support -->
+                            <article class="card-3d glass-panel feature-card">
+                                <div class="feature-icon-badge">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0966ED" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                                </div>
+                                <h3 class="feature-card-title">Bilingual Speech Matrix</h3>
+                                <p class="feature-card-desc">Optimized handling for English and mixed Hinglish audio, preserving domain terminology while parsing natural conversations.</p>
+                            </article>
+
+                            <!-- Feature 6: Executive Reports -->
+                            <article class="card-3d glass-panel feature-card">
+                                <div class="feature-icon-badge">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#36D5D0" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                                </div>
+                                <h3 class="feature-card-title">Instant PDF &amp; TXT Exports</h3>
+                                <p class="feature-card-desc">One-click generation of branded, structured PDF and clean plain-text intelligence documents ready for immediate team distribution.</p>
+                            </article>
+                        </div>
+                    </section>
+
+                </div>
+
+                <!-- ═══════════════════════════════════════════════════════════
+                     VIEW 2: PROCESSING / 7-STAGE PIPELINE
+                     ═══════════════════════════════════════════════════════════ -->
+                <div class="view-container view-processing hidden" id="progress-section">
+                    
+                    <div class="processing-layout">
+                        <!-- Left Centerpiece: Real-time 3D Three.js Object Canvas & Fallback -->
+                        <div class="three-scene-wrapper">
+                            <div id="three-canvas-container" class="three-canvas-box" aria-hidden="true"></div>
+                            <!-- Fallback Orbit Object for reduced motion / missing WebGL -->
+                            <div class="fallback-orb" id="fallback-orb">
+                                <div class="orb-ring ring-1"></div>
+                                <div class="orb-ring ring-2"></div>
+                                <div class="orb-core"></div>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Processing Progress Card -->
+                        <div class="card-3d processing-card">
+                            <div class="processing-header">
+                                <div class="proc-title-group">
+                                    <span class="card-eyebrow">PIPELINE EXECUTION</span>
+                                    <h2 class="proc-title">Synthesizing Video Intelligence</h2>
+                                    <p class="progress-status-text" id="live-step-label" aria-live="polite">Initializing pipeline components...</p>
+                                </div>
+                                
+                                <div class="proc-pct-box">
+                                    <span class="pct-number" id="live-progress-pct">0</span>
+                                    <span class="pct-sym">%</span>
+                                </div>
+                            </div>
+
+                            <!-- Progress Track with Animated Shimmer -->
+                            <div class="progress-track-wrapper" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="main-progress-bar">
+                                <div class="progress-bar-fill" id="progress-bar-fill"></div>
+                            </div>
+
+                            <div class="proc-meta-row">
+                                <div class="proc-timer">
+                                    <span class="timer-dot"></span>
+                                    <span>Elapsed: </span>
+                                    <strong id="elapsed-time-counter">00:00</strong>
+                                </div>
+                                <button type="button" class="btn-cancel-proc" id="cancel-analysis-btn">
+                                    <span>Cancel &amp; Return</span>
+                                </button>
+                            </div>
+
+                            <!-- 7-Stage Pipeline Cards Driven from Single Lookup Table -->
+                            <div class="pipeline-stages-list" id="pipeline-stages">
+                                <!-- Stage 1 -->
+                                <div class="pipeline-step-card active" data-stage="0">
+                                    <div class="step-indicator">1</div>
+                                    <div class="step-details">
+                                        <span class="step-label">Audio Extraction &amp; Slicing</span>
+                                        <span class="step-desc">yt-dlp stream capture &amp; 10-minute WAV chunking</span>
+                                    </div>
+                                    <div class="step-status-chip">Active</div>
+                                </div>
+                                <!-- Stage 2 -->
+                                <div class="pipeline-step-card" data-stage="1">
+                                    <div class="step-indicator">2</div>
+                                    <div class="step-details">
+                                        <span class="step-label">Whisper AI Transcription</span>
+                                        <span class="step-desc">Acoustic decoding with timestamp synchronization</span>
+                                    </div>
+                                    <div class="step-status-chip">Queued</div>
+                                </div>
+                                <!-- Stage 3 -->
+                                <div class="pipeline-step-card" data-stage="2">
+                                    <div class="step-indicator">3</div>
+                                    <div class="step-details">
+                                        <span class="step-label">Title Generation</span>
+                                        <span class="step-desc">Semantic context titling via Mistral 7B</span>
+                                    </div>
+                                    <div class="step-status-chip">Queued</div>
+                                </div>
+                                <!-- Stage 4 -->
+                                <div class="pipeline-step-card" data-stage="3">
+                                    <div class="step-indicator">4</div>
+                                    <div class="step-details">
+                                        <span class="step-label">Executive Synthesis</span>
+                                        <span class="step-desc">High-level overview &amp; strategic summaries</span>
+                                    </div>
+                                    <div class="step-status-chip">Queued</div>
+                                </div>
+                                <!-- Stage 5 -->
+                                <div class="pipeline-step-card" data-stage="4">
+                                    <div class="step-indicator">5</div>
+                                    <div class="step-details">
+                                        <span class="step-label">Action Item Extraction</span>
+                                        <span class="step-desc">Discrete deliverables, owners, and commitments</span>
+                                    </div>
+                                    <div class="step-status-chip">Queued</div>
+                                </div>
+                                <!-- Stage 6 -->
+                                <div class="pipeline-step-card" data-stage="5">
+                                    <div class="step-indicator">6</div>
+                                    <div class="step-details">
+                                        <span class="step-label">Decisions &amp; Open Questions</span>
+                                        <span class="step-desc">Approved outcomes and unresolved queries</span>
+                                    </div>
+                                    <div class="step-status-chip">Queued</div>
+                                </div>
+                                <!-- Stage 7 -->
+                                <div class="pipeline-step-card" data-stage="6">
+                                    <div class="step-indicator">7</div>
+                                    <div class="step-details">
+                                        <span class="step-label">ChromaDB Vector Indexing</span>
+                                        <span class="step-desc">Chunk embeddings &amp; RAG retrieval pipeline</span>
+                                    </div>
+                                    <div class="step-status-chip">Queued</div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ═══════════════════════════════════════════════════════════
+                     VIEW 3: RESULTS / TWO-COLUMN STUDIO (Left: Tabs + Export | Right: Sticky RAG Chat)
+                     ═══════════════════════════════════════════════════════════ -->
+                <div class="view-container view-results hidden" id="results-section">
+                    
+                    <!-- Results Header Banner: Title & Key Stats -->
+                    <div class="results-top-banner">
+                        <div class="results-header-left">
+                            <span class="card-eyebrow">INTELLIGENCE SYNTHESIS READY</span>
+                            <h2 class="title-text" id="result-video-title">Video Analysis Report</h2>
+                        </div>
+                        
+                        <!-- Animated Stat Cards -->
+                        <div class="results-stats-row">
+                            <div class="stat-badge-card">
+                                <span class="stat-label">WORD COUNT</span>
+                                <span class="stat-val" id="stat-word-count">0</span>
+                            </div>
+                            <div class="stat-badge-card">
+                                <span class="stat-label">CHARACTERS</span>
+                                <span class="stat-val" id="stat-char-count">0</span>
+                            </div>
+                            <div class="stat-badge-card">
+                                <span class="stat-label">EST. READING TIME</span>
+                                <span class="stat-val" id="stat-reading-time">~0 min</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Studio Two-Column Results Grid -->
+                    <div class="results-studio-grid">
+                        
+                        <!-- LEFT COLUMN: 5 Tabs (Summary, Actions, Decisions, Questions, Transcript) + Export Deck -->
+                        <div class="results-left-pane">
+                            
+                            <!-- 3D Tab Strip with sliding indicator pill -->
+                            <div class="tab-strip-3d" id="tab-strip" role="tablist">
+                                <div class="tab-active-pill" id="tab-active-pill" aria-hidden="true"></div>
+                                <button type="button" class="tab-btn active" data-tab="summary" role="tab" aria-selected="true" aria-controls="tab-pane-summary">
+                                    <span>Summary</span>
+                                </button>
+                                <button type="button" class="tab-btn" data-tab="actions" role="tab" aria-selected="false" aria-controls="tab-pane-actions">
+                                    <span>Action Items</span>
+                                </button>
+                                <button type="button" class="tab-btn" data-tab="decisions" role="tab" aria-selected="false" aria-controls="tab-pane-decisions">
+                                    <span>Key Decisions</span>
+                                </button>
+                                <button type="button" class="tab-btn" data-tab="questions" role="tab" aria-selected="false" aria-controls="tab-pane-questions">
+                                    <span>Questions</span>
+                                </button>
+                                <button type="button" class="tab-btn" data-tab="transcript" role="tab" aria-selected="false" aria-controls="tab-pane-transcript">
+                                    <span>Transcript</span>
+                                </button>
+                            </div>
+
+                            <!-- Tab Viewport Panes -->
+                            <div class="tab-viewport">
+                                <!-- Tab 1: Executive Summary -->
+                                <div class="tab-pane active" id="tab-pane-summary" role="tabpanel">
+                                    <div class="pane-action-bar">
+                                        <span class="pane-kicker">EXECUTIVE BRIEFING</span>
+                                        <button type="button" class="btn-copy-section" id="btn-copy-summary" title="Copy Summary">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                            <span>Copy</span>
+                                        </button>
+                                    </div>
+                                    <div class="summary-wrapper" id="summary-content"></div>
+                                </div>
+
+                                <!-- Tab 2: Action Items (Checkable Cards) -->
+                                <div class="tab-pane hidden" id="tab-pane-actions" role="tabpanel">
+                                    <div class="pane-action-bar">
+                                        <span class="pane-kicker">DELIVERABLES &amp; COMMITMENTS</span>
+                                        <button type="button" class="btn-copy-section" id="btn-copy-actions" title="Copy Action Items">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                            <span>Copy</span>
+                                        </button>
+                                    </div>
+                                    <div class="actions-list" id="actions-content"></div>
+                                </div>
+
+                                <!-- Tab 3: Key Decisions -->
+                                <div class="tab-pane hidden" id="tab-pane-decisions" role="tabpanel">
+                                    <div class="pane-action-bar">
+                                        <span class="pane-kicker">AGREED OUTCOMES</span>
+                                        <button type="button" class="btn-copy-section" id="btn-copy-decisions" title="Copy Key Decisions">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                            <span>Copy</span>
+                                        </button>
+                                    </div>
+                                    <div class="decisions-list" id="decisions-content"></div>
+                                </div>
+
+                                <!-- Tab 4: Open Questions -->
+                                <div class="tab-pane hidden" id="tab-pane-questions" role="tabpanel">
+                                    <div class="pane-action-bar">
+                                        <span class="pane-kicker">UNRESOLVED TOPICS</span>
+                                        <button type="button" class="btn-copy-section" id="btn-copy-questions" title="Copy Questions">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                            <span>Copy</span>
+                                        </button>
+                                    </div>
+                                    <div class="questions-list" id="questions-content"></div>
+                                </div>
+
+                                <!-- Tab 5: Full Transcript (Searchable & Copyable) -->
+                                <div class="tab-pane hidden" id="tab-pane-transcript" role="tabpanel">
+                                    <div class="transcript-toolbar">
+                                        <div class="search-box-wrap">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                            <input type="text" id="transcript-search" placeholder="Search within transcript..." aria-label="Search transcript">
+                                            <span class="search-count hidden" id="transcript-search-count">0 matches</span>
+                                            <div class="search-nav-buttons hidden" id="search-nav-controls">
+                                                <button type="button" id="transcript-prev-match" title="Previous match" aria-label="Previous match">▲</button>
+                                                <button type="button" id="transcript-next-match" title="Next match" aria-label="Next match">▼</button>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="tool-btn-3d" id="copy-transcript-action" title="Copy full transcript">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                            <span>Copy All</span>
+                                        </button>
+                                    </div>
+                                    <div class="transcript-scroll-area" id="transcript-content" tabindex="0"></div>
+                                </div>
+                            </div>
+
+                            <!-- Export Intelligence Card -->
+                            <div class="card-3d export-deck-card">
+                                <div class="export-header-row">
+                                    <div class="export-avatar-tile">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22BFC0" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="export-title">Export Intelligence Artifacts</h3>
+                                        <p class="export-subtitle">Download formatted reports or copy transcript data</p>
+                                    </div>
+                                </div>
+
+                                <div class="export-actions-grid">
+                                    <a id="btn-export-pdf" class="export-action-tile" href="#" download>
+                                        <div class="export-tile-icon pdf-accent">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                                        </div>
+                                        <div class="export-tile-info">
+                                            <span class="exp-title">Download PDF Report</span>
+                                            <span class="exp-desc">Executive summary, decisions &amp; actions</span>
+                                        </div>
+                                        <span class="exp-arrow">→</span>
+                                    </a>
+
+                                    <a id="btn-export-txt" class="export-action-tile" href="#" download>
+                                        <div class="export-tile-icon txt-accent">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                                        </div>
+                                        <div class="export-tile-info">
+                                            <span class="exp-title">Download Plain Text</span>
+                                            <span class="exp-desc">Clean readable markdown / documentation</span>
+                                        </div>
+                                        <span class="exp-arrow">→</span>
+                                    </a>
+
+                                    <button type="button" id="btn-copy-all-transcript" class="export-action-tile">
+                                        <div class="export-tile-icon copy-accent">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                        </div>
+                                        <div class="export-tile-info">
+                                            <span class="exp-title">Copy Full Transcript</span>
+                                            <span class="exp-desc">One-click copy to clipboard</span>
+                                        </div>
+                                        <span class="exp-arrow">→</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- RIGHT COLUMN: Sticky Conversational RAG Chat Pane -->
+                        <div class="results-right-pane">
+                            
+                            <div class="card-3d chat-card-sticky" id="chat-section-card">
+                                <div class="card-sheen"></div>
+
+                                <!-- Chat Card Header -->
+                                <div class="chat-card-header">
+                                    <div class="chat-avatar-icon">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    </div>
+                                    <div class="chat-header-text">
+                                        <h3 class="chat-title">Chat with Video Knowledge</h3>
+                                        <p class="chat-subtitle">ChromaDB Vector Retrieval Engine</p>
+                                    </div>
+                                    <button type="button" class="btn-clear-chat" id="clear-chat-btn" title="Clear conversation history">Clear</button>
+                                </div>
+
+                                <!-- Suggestion Action Chips -->
+                                <div class="chat-suggestions-row">
+                                    <button type="button" class="suggestion-chip" data-q="What are the key takeaways from this video?">
+                                        💡 Key takeaways
+                                    </button>
+                                    <button type="button" class="suggestion-chip" data-q="Summarize this in three concise bullet points.">
+                                        ⚡ 3-bullet summary
+                                    </button>
+                                    <button type="button" class="suggestion-chip" data-q="What important questions were left unanswered?">
+                                        ❓ Open questions
+                                    </button>
+                                </div>
+
+                                <!-- Chat Messages Area -->
+                                <div class="chat-messages-container" id="chat-messages-area" role="log" aria-live="polite">
+                                    <div class="chat-msg ai-msg">
+                                        <div class="msg-avatar">AI</div>
+                                        <div class="msg-body">
+                                            <div class="msg-content">
+                                                <p>I have ingested and indexed your video with ChromaDB. What specific questions or breakdowns would you like to explore?</p>
+                                            </div>
+                                            <span class="msg-time">Just now</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Chat Input Form -->
+                                <form class="chat-input-form" id="chat-form">
+                                    <textarea id="chat-user-input" class="chat-text-input" placeholder="Ask anything about the video... (Enter to send, Shift+Enter for new line)" rows="1" autocomplete="off"></textarea>
+                                    <button type="submit" class="chat-send-btn" id="chat-submit-btn" title="Send Question" aria-label="Send message">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                        </svg>
+                                    </button>
+                                </form>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </main>
+
+            <!-- ── FOOTER STRIP ─────────────────────────────────────────── -->
+            <footer class="app-footer">
+                <div class="footer-container">
+                    <span class="footer-tech">Engineered with <strong>Whisper AI</strong> · <strong>Mistral 7B</strong> · <strong>LangChain</strong> · <strong>ChromaDB</strong> · <strong>FastAPI</strong></span>
+                    <span class="footer-copy">AI Video Assistant — Next-Generation Multimodal Intelligence</span>
+                </div>
+            </footer>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         MODAL 1: "HOW IT WORKS" / EXPLORE ONBOARDING MODAL (Reference-style)
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <div class="modal-backdrop hidden" id="explore-modal" role="dialog" aria-modal="true" aria-labelledby="explore-modal-title">
+        <div class="explore-modal-box">
+            
+            <!-- Explore Modal Header -->
+            <div class="explore-modal-header">
+                <div class="modal-brand-tag">
+                    <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+                        <circle cx="16" cy="16" r="14" stroke="#36D5D0" stroke-width="2"/>
+                        <circle cx="16" cy="16" r="6" fill="#0966ED"/>
+                    </svg>
+                    <span class="explore-kicker">EXPLORE ARCHITECTURE</span>
+                </div>
+                <div class="explore-step-counter">
+                    <span id="explore-step-current">01</span> / 04
+                </div>
+                <button type="button" class="modal-close-btn" id="explore-close-btn" aria-label="Close modal">✕</button>
+            </div>
+
+            <!-- Two-Column Interactive Slide Layout -->
+            <div class="explore-body-grid">
+                
+                <!-- Left Column: Copy & Quote Callout -->
+                <div class="explore-copy-col">
+                    <span class="explore-stage-eyebrow" id="explore-stage-eyebrow">STEP 01 — MULTIMODAL INGESTION</span>
+                    <h2 class="explore-stage-title" id="explore-stage-title">Acoustic Splitting &amp; Audio Processing</h2>
+                    <p class="explore-stage-body" id="explore-stage-body">
+                        Media is acquired from YouTube streams or direct local container uploads (MP4, WAV, MP3). Pydub normalizes the stream to 16kHz mono audio and partitions it into 10-minute parallelizable acoustic chunks.
+                    </p>
+                    
+                    <!-- Quote Box with 3px Teal Left Bar (derived from reference #EDF8F8) -->
+                    <div class="explore-quote-box" id="explore-quote-box">
+                        <div class="quote-text" id="explore-quote-text">
+                            "Whisper acoustic modeling extracts phonemes seamlessly across mixed English and Hinglish vernacular."
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Contextual Architecture Showcase (Light & Dark Prototypes) -->
+                <div class="explore-visual-col">
+                    <div class="explore-diagram-plate" id="explore-diagram-plate">
+                        <img src="/static/assets/snapshots/stage_01_light.png" alt="Acoustic Splitting & Audio Processing Pipeline" class="diagram-img img-light" id="explore-stage-img-light">
+                        <img src="/static/assets/snapshots/stage_01_dark.png" alt="Acoustic Splitting & Audio Processing Pipeline" class="diagram-img img-dark" id="explore-stage-img-dark">
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Bottom Row: 4 Numbered Steps with Progress Line -->
+            <div class="explore-steps-footer">
+                <div class="explore-progress-track">
+                    <div class="explore-progress-fill" id="explore-progress-fill" style="width: 25%;"></div>
+                </div>
+
+                <div class="explore-steps-nav">
+                    <button type="button" class="explore-step-btn active" data-step-index="0">
+                        <span class="step-num-badge">01</span>
+                        <span class="step-nav-label">Ingest</span>
+                    </button>
+                    <button type="button" class="explore-step-btn" data-step-index="1">
+                        <span class="step-num-badge">02</span>
+                        <span class="step-nav-label">Transcribe</span>
+                    </button>
+                    <button type="button" class="explore-step-btn" data-step-index="2">
+                        <span class="step-num-badge">03</span>
+                        <span class="step-nav-label">Synthesize</span>
+                    </button>
+                    <button type="button" class="explore-step-btn" data-step-index="3">
+                        <span class="step-num-badge">04</span>
+                        <span class="step-nav-label">Converse</span>
+                    </button>
+                </div>
+
+                <div class="explore-actions-row">
+                    <button type="button" class="btn-step-nav" id="explore-prev-btn" disabled>← Previous</button>
+                    <button type="button" class="btn-step-nav primary" id="explore-next-btn">Next Step →</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         MODAL 2: SPLASH / INITIAL LOADER (800ms, skippable)
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <div class="splash-modal-wrap" id="splash-modal" role="dialog" aria-modal="true" aria-label="Loading Workspace">
+        <div class="splash-radial-glow"></div>
+        <div class="splash-content">
+            <div class="splash-logo-mark">
+                <svg viewBox="0 0 64 64" fill="none" class="splash-svg">
+                    <circle cx="32" cy="32" r="28" stroke="#36D5D0" stroke-width="2.5" opacity="0.4"/>
+                    <circle cx="32" cy="32" r="18" stroke="#22BFC0" stroke-width="3"/>
+                    <circle cx="32" cy="32" r="8" fill="#0966ED"/>
+                    <path d="M44 44L56 56" stroke="#36D5D0" stroke-width="4" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <h1 class="splash-brand-title">AI Video Assistant</h1>
+            <p class="splash-tagline">VIDEO-LANGUAGE INTELLIGENCE</p>
+            
+            <div class="splash-three-dots">
+                <span class="splash-dot dot-sm"></span>
+                <span class="splash-dot dot-lg"></span>
+                <span class="splash-dot dot-sm"></span>
+            </div>
+            
+            <span class="splash-preparing-text">Preparing your workspace...</span>
+            <button type="button" class="splash-skip-link" id="splash-skip-btn">Skip</button>
+        </div>
+    </div>
+
+    <!-- ── TOAST NOTIFICATION ───────────────────────────────────────────── -->
+    <div class="toast-notification hidden" id="toast-notify" role="alert" aria-live="assertive">
+        <div class="toast-icon" id="toast-icon">✓</div>
+        <div class="toast-message" id="toast-msg">Action completed successfully</div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="/static/app.js?v=satquery-clean-v4"></script>
+</body>
+</html>

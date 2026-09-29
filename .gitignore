@@ -1,0 +1,45 @@
+# Environment & Sensitive Keys
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# Python Virtual Environments & Packages
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Audio / Video / Downloads & Cache
+downloads/
+downloades/
+scratch/
+temp/
+*.mp4
+*.mp3
+*.wav
+*.m4a
+*.webm
+*.mkv
+*.flac
+*.ogg
+
+# Vector DB & Local Storage
+chroma_db/
+chroma/
+*.sqlite3
+*.db
+
+# Logs & OS Files
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
