@@ -13,12 +13,7 @@
         (function() {
             try {
                 var stored = localStorage.getItem("ai_video_theme");
-                var theme = "light";
-                if (stored === "dark" || stored === "light") {
-                    theme = stored;
-                } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-                    theme = "dark";
-                }
+                var theme = (stored === "dark" || stored === "light") ? stored : "light";
                 document.documentElement.setAttribute("data-theme", theme);
                 var meta = document.getElementById("meta-theme-color");
                 if (meta) meta.setAttribute("content", theme === "dark" ? "#0A1822" : "#F5F8FA");
@@ -34,7 +29,7 @@
     <!-- Pinned Three.js for real-time 3D interactive centerpiece -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    <link rel="stylesheet" href="/static/styles.css?v=satquery-clean-v4">
+    <link rel="stylesheet" href="/static/styles.css?v=satquery-light-default-v5">
 </head>
 <body class="app-body">
 
@@ -966,6 +961,6 @@
     </div>
 
     <!-- Application Script -->
-    <script src="/static/app.js?v=satquery-clean-v4"></script>
+    <script src="/static/app.js?v=satquery-light-default-v5"></script>
 </body>
 </html>
