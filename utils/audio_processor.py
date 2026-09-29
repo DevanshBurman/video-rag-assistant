@@ -152,7 +152,7 @@ def download_youtube_audio(url: str) -> str:
     output_template = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
 
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "ba/b",
         "outtmpl": output_template,
         "noplaylist": True,
         "nocheckcertificate": True,
@@ -163,11 +163,12 @@ def download_youtube_audio(url: str) -> str:
         "socket_timeout": 30,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "mweb", "tvhtml5"]
+                "player_client": ["android"],
+                "player_skip": ["web", "mweb", "ios", "tv"]
             }
         },
         "http_headers": {
-            "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 14; en_US) gzip",
+            "User-Agent": "com.google.android.youtube/19.29.35 (Linux; U; Android 14; en_US) gzip",
             "Accept-Language": "en-US,en;q=0.9",
         },
         "postprocessors": [
