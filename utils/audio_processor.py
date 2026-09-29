@@ -1,6 +1,9 @@
 import os
 import re
 import uuid
+import json
+import tempfile
+import urllib.request
 import yt_dlp
 from pydub import AudioSegment
 
@@ -20,6 +23,99 @@ def get_last_media_title() -> str | None:
     """Return the title of the most recently processed audio/video."""
     global _last_media_title
     return _last_media_title
+
+
+def set_last_media_title(title: str | None) -> None:
+    """Set the title of the currently processed media."""
+    global _last_media_title
+    _last_media_title = title
+
+
+def extract_youtube_id(url: str) -> str | None:
+    """Extract the 11-character YouTube video ID from various URL formats."""
+    if not url:
+        return None
+    patterns = [
+        r'(?:v=|\/embed\/|\/v\/|youtu\.be\/|\/shorts\/|\/live\/)([0-9A-Za-z_-]{11})',
+        r'^([0-9A-Za-z_-]{11})$'
+    ]
+    for p in patterns:
+        m = re.search(p, url.strip())
+        if m:
+            return m.group(1)
+    return None
+
+
+def fetch_youtube_oembed_title(video_id: str) -> str | None:
+    """Fetch video title using YouTube's public oEmbed endpoint without auth or bot blocks."""
+    try:
+        req = urllib.request.Request(
+            f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json",
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            return data.get("title")
+    except Exception as e:
+        print(f"[Notice] Could not fetch oEmbed title: {e}")
+        return None
+
+
+def extract_youtube_transcript_direct(url_or_id: str, language: str = "english") -> tuple[str | None, str | None]:
+    """
+    Directly fetch transcripts and metadata using YouTube's official captions endpoint.
+    This completely bypasses audio downloading and YouTube bot detection on cloud servers (Render, Railway, etc.).
+    Returns (transcript_text, title) or (None, title_or_none) on failure.
+    """
+    video_id = extract_youtube_id(url_or_id)
+    if not video_id:
+        return None, None
+
+    title = fetch_youtube_oembed_title(video_id)
+    if title:
+        set_last_media_title(title)
+
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        api = YouTubeTranscriptApi()
+
+        snippets = None
+        # Preferred language codes
+        lang_pref = ["en", "hi"] if "hin" in (language or "").lower() else ["en"]
+
+        # Try fetching using transcript list if available
+        try:
+            transcript_list = api.list(video_id)
+            for lang in lang_pref:
+                try:
+                    snippets = transcript_list.find_transcript([lang]).fetch()
+                    break
+                except Exception:
+                    pass
+            if not snippets:
+                # Fallback to any transcript available
+                for t in transcript_list:
+                    snippets = t.fetch()
+                    break
+        except Exception:
+            # Fallback to direct fetch
+            snippets = api.fetch(video_id)
+
+        if snippets:
+            lines = []
+            for s in snippets:
+                txt = getattr(s, "text", "") if hasattr(s, "text") else (s.get("text", "") if isinstance(s, dict) else str(s))
+                txt = txt.strip()
+                if txt:
+                    lines.append(txt)
+            transcript = " ".join(lines).strip()
+            if transcript:
+                print(f"[YouTubeTranscriptApi] Successfully extracted {len(lines)} caption segments for video {video_id}.")
+                return transcript, title
+    except Exception as e:
+        print(f"[YouTubeTranscriptApi] Caption extraction notice: {e}")
+
+    return None, title
 
 
 def is_url(source: str) -> bool:
@@ -83,10 +179,20 @@ def download_youtube_audio(url: str) -> str:
         ],
     }
 
-    # Support optional cookie file if placed in root or passed via env
-    cookie_candidate = os.environ.get("YOUTUBE_COOKIE_FILE") or "cookies.txt"
-    if os.path.exists(cookie_candidate):
-        ydl_opts["cookiefile"] = cookie_candidate
+    # Support cookies via YOUTUBE_COOKIES env var, file path env var, or local cookies.txt
+    cookies_env = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    if cookies_env:
+        temp_cookie_path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
+        try:
+            with open(temp_cookie_path, "w", encoding="utf-8") as f:
+                f.write(cookies_env)
+            ydl_opts["cookiefile"] = temp_cookie_path
+        except Exception as e:
+            print(f"[Warning] Failed to write temporary cookie file: {e}")
+    else:
+        cookie_candidate = os.environ.get("YOUTUBE_COOKIE_FILE") or "cookies.txt"
+        if os.path.exists(cookie_candidate):
+            ydl_opts["cookiefile"] = cookie_candidate
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(clean_url, download=True)

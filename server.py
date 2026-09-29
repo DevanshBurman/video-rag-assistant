@@ -107,7 +107,12 @@ async def start_analysis(
 def _run_pipeline(task_id: str, source: str, language: str, is_temp_file: bool = False):
     """Run the full analysis pipeline in a background thread."""
     try:
-        from utils.audio_processor import process_input, get_last_media_title
+        from utils.audio_processor import (
+            process_input,
+            get_last_media_title,
+            is_url,
+            extract_youtube_transcript_direct,
+        )
         from core.transcriber import transcribe_all
         from core.summarize import summarize, generate_title
         from core.extractor import (
@@ -121,17 +126,33 @@ def _run_pipeline(task_id: str, source: str, language: str, is_temp_file: bool =
         if not t:
             return
 
-        t.update(step="Downloading & processing audio...", progress=5)
-        chunks = process_input(source)
+        transcript = None
+        media_title = None
 
-        t.update(step="Transcribing audio with Whisper AI...", progress=20)
-        transcript = transcribe_all(chunks, language)
+        # 1. Fast direct transcript extraction for YouTube URLs (bypasses bot detection on cloud IPs)
+        if is_url(source):
+            t.update(step="Fetching direct YouTube transcript & metadata...", progress=15)
+            transcript, yt_title = extract_youtube_transcript_direct(source, language)
+            if yt_title:
+                media_title = yt_title
+
+        # 2. Fallback to audio download + Whisper if uncaptioned or uploaded local file
+        if not transcript:
+            t.update(step="Downloading & processing audio...", progress=20)
+            chunks = process_input(source)
+
+            t.update(step="Transcribing audio with Whisper AI...", progress=35)
+            transcript = transcribe_all(chunks, language)
+
+        if not media_title:
+            media_title = get_last_media_title()
+
+        if not transcript or not transcript.strip():
+            raise ValueError("No transcript or audio speech could be extracted from this media source.")
 
         t.update(step="Synthesizing intelligence & building RAG in parallel...", progress=50)
 
         import concurrent.futures
-
-        media_title = get_last_media_title()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
             future_title = executor.submit(lambda: media_title or generate_title(transcript))
