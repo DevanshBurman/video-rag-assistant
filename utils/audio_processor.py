@@ -60,9 +60,20 @@ def download_youtube_audio(url: str) -> str:
         "outtmpl": output_template,
         "noplaylist": True,
         "nocheckcertificate": True,
-        "js_runtimes": {"node": {}},
         "quiet": True,
         "no_warnings": True,
+        "retries": 10,
+        "fragment_retries": 10,
+        "socket_timeout": 30,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios", "mweb", "tvhtml5"]
+            }
+        },
+        "http_headers": {
+            "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 14; en_US) gzip",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -71,6 +82,11 @@ def download_youtube_audio(url: str) -> str:
             }
         ],
     }
+
+    # Support optional cookie file if placed in root or passed via env
+    cookie_candidate = os.environ.get("YOUTUBE_COOKIE_FILE") or "cookies.txt"
+    if os.path.exists(cookie_candidate):
+        ydl_opts["cookiefile"] = cookie_candidate
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(clean_url, download=True)
