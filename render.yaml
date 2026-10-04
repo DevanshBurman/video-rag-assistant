@@ -6,13 +6,27 @@ services:
     region: oregon
     branch: main
     autoDeploy: true
-    healthCheckPath: /
+    healthCheckPath: /health
     envVars:
       - key: MISTRAL_API_KEY
         sync: false
       - key: MISTRAL_MODEL
-        value: open-mistral-7b
-      - key: WHISPER_MODEL
-        value: base
-      - key: SARVAM_API_KEY
+        value: mistral-small-latest
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_WHISPER_MODEL
+        value: whisper-large-v3-turbo
+      - key: TRANSCRIBER_BACKEND
+        value: groq
+      - key: MAX_VIDEO_MINUTES
+        value: "90"
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: PROXY_URL
+        sync: false
+      - key: WEBSHARE_PROXY_USERNAME
+        sync: false
+      - key: WEBSHARE_PROXY_PASSWORD
+        sync: false
+      - key: YOUTUBE_COOKIES
         sync: false

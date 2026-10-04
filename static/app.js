@@ -81,10 +81,19 @@
         segmentedControl: $("segmented-control"),
         tabUrlBtn: $("tab-url-btn"),
         tabFileBtn: $("tab-file-btn"),
+        tabTextBtn: $("tab-text-btn"),
         panelUrl: $("panel-url"),
         panelFile: $("panel-file"),
+        panelText: $("panel-text"),
         youtubeInput: $("youtube-url-input"),
         clearUrlBtn: $("clear-url-btn"),
+        transcriptPasteInput: $("transcript-paste-input"),
+        pasteCharCounter: $("paste-char-counter"),
+        fallbackHelpBanner: $("fallback-help-banner"),
+        fallbackBannerTitle: $("fallback-banner-title"),
+        fallbackBannerDesc: $("fallback-banner-desc"),
+        fallbackSwitchUploadBtn: $("fallback-switch-upload-btn"),
+        fallbackSwitchPasteBtn: $("fallback-switch-paste-btn"),
         dropZone: $("drop-zone"),
         emptyStateBrowseBtn: $("empty-state-browse-btn"),
         fileInput: $("file-input"),
@@ -606,23 +615,32 @@
     function setInputMode(newMode) {
         state.mode = newMode;
 
-        if (newMode === "url") {
-            dom.segmentedControl.classList.remove("file-active");
-            dom.tabUrlBtn.classList.add("active");
-            dom.tabUrlBtn.setAttribute("aria-selected", "true");
-            dom.tabFileBtn.classList.remove("active");
-            dom.tabFileBtn.setAttribute("aria-selected", "false");
-            dom.panelUrl.classList.remove("hidden");
-            dom.panelFile.classList.add("hidden");
-        } else {
-            dom.segmentedControl.classList.add("file-active");
-            dom.tabFileBtn.classList.add("active");
-            dom.tabFileBtn.setAttribute("aria-selected", "true");
-            dom.tabUrlBtn.classList.remove("active");
-            dom.tabUrlBtn.setAttribute("aria-selected", "false");
-            dom.panelFile.classList.remove("hidden");
-            dom.panelUrl.classList.add("hidden");
+        if (dom.segmentedControl) {
+            dom.segmentedControl.classList.remove("file-active", "mode-url", "mode-file", "mode-text");
+            dom.segmentedControl.classList.add(`mode-${newMode}`);
+            if (newMode === "file") dom.segmentedControl.classList.add("file-active");
         }
+
+        const tabs = [
+            { mode: "url", btn: dom.tabUrlBtn, panel: dom.panelUrl },
+            { mode: "file", btn: dom.tabFileBtn, panel: dom.panelFile },
+            { mode: "text", btn: dom.tabTextBtn, panel: dom.panelText },
+        ];
+
+        tabs.forEach(t => {
+            const isActive = t.mode === newMode;
+            if (t.btn) {
+                t.btn.classList.toggle("active", isActive);
+                t.btn.setAttribute("aria-selected", isActive ? "true" : "false");
+            }
+            if (t.panel) {
+                t.panel.classList.toggle("hidden", !isActive);
+                t.panel.classList.toggle("active", isActive);
+            }
+        });
+
+        // Hide fallback alert when user switches modes
+        if (dom.fallbackHelpBanner) dom.fallbackHelpBanner.classList.add("hidden");
 
         validateInputState();
     }
@@ -638,8 +656,15 @@
                 urlVal.startsWith("http://") ||
                 urlVal.startsWith("https://")
             );
-        } else {
+        } else if (state.mode === "file") {
             isValid = state.selectedFile !== null;
+        } else if (state.mode === "text") {
+            const textVal = dom.transcriptPasteInput ? dom.transcriptPasteInput.value.trim() : "";
+            const charCount = textVal.length;
+            if (dom.pasteCharCounter) {
+                dom.pasteCharCounter.textContent = `${charCount} characters`;
+            }
+            isValid = charCount > 15;
         }
 
         dom.startBtn.disabled = !isValid;
@@ -759,10 +784,15 @@
             formData.append("source", url);
             sourceLabel = url;
             saveRecentSource(url, "url");
-        } else if (state.selectedFile) {
+        } else if (state.mode === "file" && state.selectedFile) {
             formData.append("file", state.selectedFile);
             sourceLabel = state.selectedFile.name;
             saveRecentSource(state.selectedFile.name, "file");
+        } else if (state.mode === "text") {
+            const pastedText = dom.transcriptPasteInput.value.trim();
+            formData.append("transcript_text", pastedText);
+            sourceLabel = "Pasted Transcript";
+            saveRecentSource("Pasted Transcript", "text");
         }
 
         try {
@@ -770,10 +800,10 @@
             startTimer();
             updateProgress(5, "Contacting processing engine...");
 
-            const res = await fetch("/api/analyze", {
+            const res = await fetch("/process", {
                 method: "POST",
                 body: formData,
-            });
+            }).catch(() => fetch("/api/analyze", { method: "POST", body: formData }));
 
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
@@ -781,7 +811,7 @@
             }
 
             const data = await res.json();
-            state.taskId = data.task_id;
+            state.taskId = data.job_id || data.task_id;
 
             startStatusPolling(state.taskId);
         } catch (err) {
@@ -835,8 +865,17 @@
                 } else if (data.status === "error") {
                     clearInterval(state.pollTimer);
                     stopTimer();
-                    showToast(data.step || "Pipeline encountered an error", true);
-                    setTimeout(() => switchView("idle"), 2500);
+                    const errMsg = data.step || "Pipeline encountered an error";
+                    showToast(errMsg, true);
+                    
+                    // Show friendly user-facing fallback card on ingest screen
+                    if (dom.fallbackHelpBanner) {
+                        dom.fallbackHelpBanner.classList.remove("hidden");
+                        if (dom.fallbackBannerDesc) {
+                            dom.fallbackBannerDesc.textContent = errMsg;
+                        }
+                    }
+                    setTimeout(() => switchView("idle"), 2000);
                 }
             } catch (err) {
                 console.error("Polling error:", err);
@@ -1352,9 +1391,19 @@
             validateInputState();
         });
 
-        // Segmented Control (URL vs File)
+        // Segmented Control (URL vs File vs Paste Transcript)
         if (dom.tabUrlBtn) dom.tabUrlBtn.addEventListener("click", () => setInputMode("url"));
         if (dom.tabFileBtn) dom.tabFileBtn.addEventListener("click", () => setInputMode("file"));
+        if (dom.tabTextBtn) dom.tabTextBtn.addEventListener("click", () => setInputMode("text"));
+
+        // Fallback banner actions
+        if (dom.fallbackSwitchUploadBtn) dom.fallbackSwitchUploadBtn.addEventListener("click", () => setInputMode("file"));
+        if (dom.fallbackSwitchPasteBtn) dom.fallbackSwitchPasteBtn.addEventListener("click", () => setInputMode("text"));
+
+        // Textarea Input
+        if (dom.transcriptPasteInput) {
+            dom.transcriptPasteInput.addEventListener("input", validateInputState);
+        }
 
         // URL Input
         if (dom.youtubeInput) {

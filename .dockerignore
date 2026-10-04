@@ -1,14 +1,13 @@
 .git
 .gitignore
 .venv
-venv
 __pycache__
 *.pyc
 *.pyo
 *.pyd
 .env
-downloads
-scratch
+downloads/
+scratch/
+.pytest_cache/
 *.log
 .DS_Store
-Thumbs.db

@@ -256,8 +256,8 @@
                                     <h2 class="card-title">Select or Drop Video</h2>
                                 </div>
 
-                                <!-- 3D Segmented Switcher: YouTube URL vs File Upload -->
-                                <div class="segmented-control-3d" id="segmented-control" role="tablist">
+                                <!-- 3D Segmented Switcher: YouTube URL vs File Upload vs Paste Transcript -->
+                                <div class="segmented-control-3d mode-url" id="segmented-control" role="tablist">
                                     <div class="segment-slider" id="segment-slider"></div>
                                     <button type="button" class="segment-btn active" id="tab-url-btn" data-mode="url" role="tab" aria-selected="true">
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg>
@@ -266,6 +266,10 @@
                                     <button type="button" class="segment-btn" id="tab-file-btn" data-mode="file" role="tab" aria-selected="false">
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                                         <span>Upload File</span>
+                                    </button>
+                                    <button type="button" class="segment-btn" id="tab-text-btn" data-mode="text" role="tab" aria-selected="false">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                                        <span>Paste Transcript</span>
                                     </button>
                                 </div>
                             </div>
@@ -282,14 +286,13 @@
                                 <div class="input-format-chips">
                                     <span class="format-chip">YouTube Videos</span>
                                     <span class="format-chip">YouTube Shorts</span>
-                                    <span class="format-chip">Recorded Streams</span>
+                                    <span class="format-chip">Multi-tier Ingestion</span>
                                 </div>
                             </div>
 
                             <!-- Panel 2: File Upload Mode & Empty State -->
                             <div class="input-panel hidden" id="panel-file" role="tabpanel">
                                 <div class="drop-zone-3d" id="drop-zone" tabindex="0" role="button" aria-label="Drop video file or click to browse">
-                                    <!-- Reference-style centered icon tile with teal CTA -->
                                     <div class="empty-icon-tile">
                                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22BFC0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -317,6 +320,38 @@
                                         <span class="file-pill-size" id="selected-file-size">0 MB</span>
                                     </div>
                                     <button type="button" class="file-pill-remove" id="remove-file-btn" title="Remove selected file" aria-label="Remove selected file">✕</button>
+                                </div>
+                            </div>
+
+                            <!-- Panel 3: Paste Transcript Mode -->
+                            <div class="input-panel hidden" id="panel-text" role="tabpanel">
+                                <div class="transcript-paste-wrapper">
+                                    <textarea id="transcript-paste-input" class="modern-textarea" placeholder="Paste full transcript text or subtitles here...&#10;&#10;Works instantly without needing YouTube or audio downloading. Generates title, summary, action items, and in-memory RAG." rows="6"></textarea>
+                                </div>
+                                <div class="input-format-chips">
+                                    <span class="format-chip" id="paste-char-counter">0 characters</span>
+                                    <span class="format-chip">Instant Ingestion (100% Cloud-Reliable)</span>
+                                </div>
+                            </div>
+
+                            <!-- Fallback Assistance Banner (Hidden by default, shown if ingestion fails) -->
+                            <div class="ingestion-fallback-banner hidden" id="fallback-help-banner">
+                                <div class="fallback-banner-header">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                    <span id="fallback-banner-title">YouTube Access Blocked by Cloud Restrictions</span>
+                                </div>
+                                <p class="fallback-banner-desc" id="fallback-banner-desc">
+                                    Render's datacenter IP is blocked by YouTube for this video. You can easily continue by choosing an alternative:
+                                </p>
+                                <div class="fallback-action-buttons">
+                                    <button type="button" class="fallback-btn-action" id="fallback-switch-upload-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                        <span>(a) Upload Audio/Video File</span>
+                                    </button>
+                                    <button type="button" class="fallback-btn-action" id="fallback-switch-paste-btn">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                                        <span>(b) Paste Transcript Text</span>
+                                    </button>
                                 </div>
                             </div>
 

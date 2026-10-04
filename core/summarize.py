@@ -1,37 +1,28 @@
 import os
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-
-def _get_mistral_llm():
-    """Helper to initialize ChatMistralAI if API key is present."""
-    api_key = (os.getenv("MISTRAL_API_KEY") or "").strip()
-    if not api_key:
-        return None
-    model_name = (os.getenv("MISTRAL_MODEL") or "open-mistral-7b").strip()
-    try:
-        from langchain_mistralai import ChatMistralAI
-        return ChatMistralAI(model=model_name, api_key=api_key, temperature=0.3)
-    except Exception as e:
-        print(f"Warning: Failed to initialize ChatMistralAI: {e}")
-        return None
+from core.llm_utils import get_mistral_llm, invoke_with_retry, map_reduce_chain
 
 def generate_title(transcript: str) -> str:
-    """Generate a concise, descriptive title for the meeting/video."""
+    """Generate a concise, descriptive title for the meeting/video using the first ~4000 chars."""
     if not transcript or not transcript.strip():
         return "Untitled Video / Meeting"
 
-    llm = _get_mistral_llm()
+    llm = get_mistral_llm(temperature=0.3)
     if llm:
         try:
             prompt = ChatPromptTemplate.from_messages([
-                ("system", "You are a professional editor. Generate a concise, engaging, and descriptive title for the following video/meeting transcript. Return ONLY the title text with no quotation marks or commentary."),
+                ("system", (
+                    "You are a professional editor. Generate a concise, engaging, and descriptive title "
+                    "for the following video/meeting transcript. Return ONLY the title text with no quotation marks or commentary."
+                )),
                 ("user", "Transcript excerpt:\n{text}\n\nTitle:")
             ])
             chain = prompt | llm | StrOutputParser()
-            title = chain.invoke({"text": transcript[:4000]}).strip()
+            title = invoke_with_retry(chain, {"text": transcript[:4000]}).strip()
             return title.strip('"\'')
         except Exception as e:
-            print(f"LLM Title generation notice: {e}")
+            print(f"[LLM Title Warning] Generation notice: {e}")
 
     # Fallback if no API key or network error
     first_few_words = transcript.strip().split()[:8]
@@ -41,30 +32,44 @@ def generate_title(transcript: str) -> str:
     return fallback_title or "AI Video Summary"
 
 def summarize(transcript: str) -> str:
-    """Generate an executive summary of the meeting/video transcript."""
+    """Generate an executive summary of the meeting/video transcript using Map-Reduce for long inputs."""
     if not transcript or not transcript.strip():
         return "No transcript content available to summarize."
 
-    llm = _get_mistral_llm()
+    llm = get_mistral_llm(temperature=0.2)
     if llm:
         try:
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", (
-                    "You are an expert executive assistant. Provide a structured, high-quality summary of the following transcript. "
-                    "Include:\n"
-                    "1. Overview & Core Theme\n"
-                    "2. Key Discussion Points\n"
-                    "3. Main Takeaways & Conclusion\n"
-                    "Keep the tone objective, clear, and professional."
-                )),
-                ("user", "Transcript:\n{text}\n\nStructured Summary:")
-            ])
-            chain = prompt | llm | StrOutputParser()
-            return chain.invoke({"text": transcript[:12000]}).strip()
-        except Exception as e:
-            print(f"LLM Summary generation notice: {e}")
+            map_system = (
+                "You are an expert executive assistant. Summarize this section of a video/meeting transcript concisely. "
+                "Highlight key discussion points, main arguments, and any preliminary conclusions."
+            )
+            map_user = "Section {part_idx} of {total_parts}:\n{text}\n\nKey Section Insights:"
 
-    # Fallback if MISTRAL_API_KEY is not set
+            reduce_system = (
+                "You are an expert executive assistant. Provide a structured, high-quality, comprehensive Executive Summary "
+                "based on the provided transcript notes.\n"
+                "Your summary MUST include:\n"
+                "1. Overview & Core Theme\n"
+                "2. Key Discussion Points (with substantive details)\n"
+                "3. Main Takeaways & Conclusion\n"
+                "Keep the tone objective, clear, and professional."
+            )
+            reduce_user = "Transcript Analysis Material:\n{text}\n\nStructured Executive Summary:"
+
+            return map_reduce_chain(
+                text=transcript,
+                llm=llm,
+                map_system_prompt=map_system,
+                map_user_template=map_user,
+                reduce_system_prompt=reduce_system,
+                reduce_user_template=reduce_user,
+                chunk_size=8000,
+                overlap=1000
+            )
+        except Exception as e:
+            print(f"[LLM Summary Warning] Generation notice: {e}")
+
+    # Fallback if MISTRAL_API_KEY is not set or failed
     preview = transcript.strip()
     if len(preview) > 600:
         preview = preview[:600] + "..."
