@@ -253,11 +253,25 @@ async def start_analysis(
         tmp.close()
         temp_file_path = tmp.name
 
+    detected_platform = "media source"
+    if source:
+        try:
+            from utils.url_router import classify_url
+            c_info = classify_url(source)
+            detected_platform = c_info.get("label", "video link")
+        except Exception:
+            detected_platform = "video link"
+    elif file:
+        detected_platform = "uploaded file"
+    elif transcript_text:
+        detected_platform = "pasted transcript"
+
     jobs[job_id] = {
         "status": "processing",
         "stage": "downloading",
         "progress": 5,
-        "step": "Ingesting media source...",
+        "step": f"Connecting to {detected_platform}...",
+        "link_type": detected_platform,
         "result": None,
         "rag_chain": None,
         "created_at": time.time(),
@@ -299,9 +313,10 @@ def _run_pipeline(
             return
 
         max_minutes = int(os.getenv("MAX_VIDEO_MINUTES", "90"))
+        link_label = j.get("link_type", "media")
 
         # Stage 1: Ingestion (downloading / subtitles / direct transcript)
-        j.update(stage="downloading", progress=12, step="Acquiring transcript & video content...")
+        j.update(stage="downloading", progress=12, step=f"Acquiring {link_label}...")
         media_result = process_media_source(
             source=source,
             language=language,
@@ -311,6 +326,8 @@ def _run_pipeline(
         )
 
         title = media_result.get("title") or "Video Intelligence Report"
+        if media_result.get("downloaded_raw"):
+            created_temp_files.append(media_result["downloaded_raw"])
         if media_result.get("raw_file"):
             created_temp_files.append(media_result["raw_file"])
 
@@ -332,7 +349,7 @@ def _run_pipeline(
         j.update(stage="summarizing", progress=50, step="Synthesizing executive summary with Map-Reduce...")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_title = executor.submit(lambda: title if (title and "YouTube Video" not in title) else generate_title(transcript))
+            future_title = executor.submit(lambda: title if (title and "YouTube Video" not in title and "Video Recording" not in title) else generate_title(transcript))
             future_summary = executor.submit(summarize, transcript)
             future_actions = executor.submit(extract_action_items, transcript)
             future_decisions = executor.submit(extract_key_decisions, transcript)
@@ -370,7 +387,7 @@ def _run_pipeline(
         j["step"] = "Analysis complete!"
 
     except MediaIngestionError as mie:
-        logger.error(f"[Job {job_id}] MediaIngestionError: {mie}")
+        logger.warning(f"[Job {job_id}] MediaIngestionError: {mie} | Details: {mie.technical_details}")
         if job_id in jobs:
             jobs[job_id]["status"] = "error"
             jobs[job_id]["step"] = str(mie)
@@ -380,7 +397,7 @@ def _run_pipeline(
         logger.error(f"[Job {job_id}] Pipeline exception: {e}", exc_info=True)
         if job_id in jobs:
             jobs[job_id]["status"] = "error"
-            jobs[job_id]["step"] = "Analysis failed. Please check the source or upload the audio/video file directly."
+            jobs[job_id]["step"] = "Analysis failed. Please check the source link or upload the audio/video file directly."
             jobs[job_id]["progress"] = 0
             jobs[job_id]["error_code"] = "PIPELINE_ERROR"
     finally:

@@ -1,12 +1,42 @@
+"""
+AI Video Assistant — Media & Audio Ingestion Engine
+===================================================
+Handles multi-tier media acquisition, transcription ingestion, and audio processing:
+  1. Pasted transcript text (instant zero-network path)
+  2. YouTube multi-tier pipeline:
+     - Tier 1: youtube_transcript_api direct
+     - Tier 2: yt-dlp subtitle-only extraction (json3/vtt)
+     - Tier 3: yt-dlp audio download (player_client retry loop, TV/Safari/mweb)
+     - Tier 3.5: Supadata YouTube transcript API fallback (optional free tier)
+  3. Direct media files (.mp4, .mp3, .wav, etc.) & Cloud Shares (Google Drive, Dropbox, OneDrive)
+     - Streaming requests with MAX_DOWNLOAD_MB guard and SSRF redirection defense
+     - Duration check (MAX_VIDEO_MINUTES)
+     - 16kHz mono WAV conversion via ffmpeg/pydub
+  4. Non-YouTube video sites (Vimeo, Loom, Zoom, Teams, etc.)
+     - Generic yt-dlp extractor (default settings, no forced android client)
+     - Audio-only format with UUID output filenames and auto-cleanup
+  5. Local audio/video file upload (.mp4, .mp3, .wav, .mkv, .webm, etc.)
+"""
+
 import os
 import re
 import json
 import uuid
 import tempfile
+import urllib.parse
 import urllib.request
 import logging
+import requests
 from pydub import AudioSegment
 import yt_dlp
+
+from utils.url_router import (
+    classify_url,
+    validate_safe_url,
+    download_direct_media_stream,
+    MediaDownloadError,
+    SSRFBlockedError,
+)
 
 logger = logging.getLogger("audio_processor")
 logger.setLevel(logging.INFO)
@@ -110,7 +140,7 @@ def get_cookie_file_path() -> str | None:
     return None
 
 def is_url(source: str) -> bool:
-    """Check if the source string is a web / YouTube URL."""
+    """Check if the source string is a web / media URL."""
     if not source:
         return False
     s = source.strip().lower()
@@ -120,6 +150,10 @@ def is_url(source: str) -> bool:
         or s.startswith("www.")
         or "youtube.com" in s
         or "youtu.be" in s
+        or "drive.google.com" in s
+        or "dropbox.com" in s
+        or "vimeo.com" in s
+        or "loom.com" in s
     )
 
 def normalize_url(url: str) -> str:
@@ -128,6 +162,15 @@ def normalize_url(url: str) -> str:
     if not (u.startswith("http://") or u.startswith("https://")):
         u = "https://" + u
     return u
+
+def get_media_duration_seconds(file_path: str) -> float | None:
+    """Safely obtain audio/video duration in seconds using pydub."""
+    try:
+        audio = AudioSegment.from_file(file_path)
+        return len(audio) / 1000.0
+    except Exception as e:
+        logger.debug(f"[Duration Check] Could not measure audio duration for {file_path}: {e}")
+        return None
 
 # ── STAGE 1: Direct YouTube Transcript API ─────────────────────────────────────
 
@@ -326,14 +369,12 @@ def extract_youtube_subtitles_ytdlp(url: str) -> tuple[str | None, str | None, d
                         info = info["entries"][0]
                     title = info.get("title")
 
-            # Look for written subtitle files in tmpdir
             sub_files = [
                 os.path.join(tmpdir, f) for f in os.listdir(tmpdir)
                 if f.endswith((".json3", ".vtt", ".ttml", ".srv3"))
             ]
 
             if sub_files:
-                # Prefer English json3/vtt
                 sub_files.sort(key=lambda x: (
                     0 if ".en." in x.lower() or x.lower().endswith(".en.json3") else
                     1 if x.endswith(".json3") else
@@ -362,7 +403,7 @@ def extract_youtube_subtitles_ytdlp(url: str) -> tuple[str | None, str | None, d
 
     return None, title, diag
 
-# ── STAGE 3: Fallback 2 - yt-dlp Audio Download ────────────────────────────────
+# ── STAGE 3: Fallback 2 - yt-dlp YouTube Audio Download ───────────────────────
 
 CLIENT_CONFIGS = [
     None,            # Default yt-dlp client list
@@ -423,7 +464,6 @@ def download_youtube_audio(url: str, max_minutes: int = 90) -> tuple[str, str]:
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Pre-check video duration to prevent overloading server
                 info = ydl.extract_info(clean_url, download=False)
                 if info and "entries" in info and info["entries"]:
                     info = info["entries"][0]
@@ -434,11 +474,10 @@ def download_youtube_audio(url: str, max_minutes: int = 90) -> tuple[str, str]:
 
                 if duration and duration > (max_minutes * 60):
                     raise MediaIngestionError(
-                        f"Video duration ({int(duration // 60)} minutes) exceeds the maximum allowed limit of {max_minutes} minutes.",
+                        f"Video duration ({int(duration // 60)} minutes) exceeds the maximum allowed limit of {max_minutes} minutes. Please trim or upload a shorter file.",
                         code="DURATION_EXCEEDED"
                     )
 
-                # Now download
                 ydl.process_info(info)
 
                 wav_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.wav")
@@ -464,6 +503,171 @@ def download_youtube_audio(url: str, max_minutes: int = 90) -> tuple[str, str]:
         code="YTDLP_AUDIO_FAILED",
         technical_details=str(last_error)
     )
+
+# ── STAGE 3.5: Optional Free YouTube Fallback (Supadata Transcript API) ─────────
+
+def extract_youtube_transcript_supadata(url: str) -> tuple[str | None, str | None, dict]:
+    """
+    Optional free YouTube fallback using the Supadata transcript API (free tier).
+    Runs AFTER existing YouTube methods fail and BEFORE showing user error.
+    Skipped silently if SUPADATA_API_KEY is not set.
+    """
+    api_key = (os.getenv("SUPADATA_API_KEY") or "").strip()
+    if not api_key:
+        return None, None, {"status": "skipped", "reason": "SUPADATA_API_KEY not configured"}
+
+    clean_url = normalize_url(url)
+    video_id = extract_youtube_id(clean_url)
+    target_param = f"https://www.youtube.com/watch?v={video_id}" if video_id else clean_url
+    title = fetch_youtube_oembed_title(video_id) if video_id else None
+    diag = {"status": "attempted", "video_id": video_id, "stage": "supadata_api"}
+
+    logger.info("[Supadata API] Attempting free transcript extraction fallback...")
+    try:
+        endpoint = f"https://api.supadata.ai/v1/youtube/transcript?url={urllib.parse.quote(target_param, safe='')}"
+        headers = {
+            "x-api-key": api_key,
+            "User-Agent": "AI-Video-Assistant/2.0"
+        }
+        resp = requests.get(endpoint, headers=headers, timeout=25)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            transcript_text = ""
+            content = data.get("content")
+            if isinstance(content, list):
+                lines = [seg.get("text", "").strip() for seg in content if isinstance(seg, dict) and seg.get("text")]
+                transcript_text = " ".join(lines).strip()
+            elif isinstance(content, str):
+                transcript_text = content.strip()
+
+            if transcript_text and len(transcript_text) > 20:
+                logger.info(f"[Supadata API] Successfully retrieved transcript ({len(transcript_text.split())} words)")
+                diag["status"] = "success"
+                return transcript_text, title or "YouTube Video", diag
+            else:
+                diag["status"] = "empty_content"
+        else:
+            logger.info(f"[Supadata API] Status {resp.status_code}: {resp.text[:120]}")
+            diag["status"] = f"http_{resp.status_code}"
+    except Exception as e:
+        logger.warning(f"[Supadata API] Request error: {e}")
+        diag["error"] = str(e)
+
+    return None, title, diag
+
+# ── Generic Non-YouTube Video Downloader (yt-dlp) ─────────────────────────────
+
+def download_generic_video_audio(url: str, max_minutes: int = 90) -> tuple[str, str]:
+    """
+    Download non-YouTube video/meeting audio with yt-dlp using default settings.
+    - Does NOT force android client (or any youtube extractor_args)
+    - Audio-only format (FFmpegExtractAudio -> wav)
+    - Output filename based on UUID
+    - Validates safe URL (SSRF protection)
+    - Checks duration before downloading
+    Returns (wav_path, video_title).
+    """
+    safe_url = validate_safe_url(url)
+    clean_id = f"generic_{uuid.uuid4().hex[:10]}"
+    output_template = os.path.join(DOWNLOAD_DIR, f"{clean_id}.%(ext)s")
+
+    ydl_opts = {
+        "format": "ba/b",
+        "outtmpl": output_template,
+        "noplaylist": True,
+        "nocheckcertificate": True,
+        "quiet": True,
+        "no_warnings": True,
+        "retries": 3,
+        "socket_timeout": 30,
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "wav",
+                "preferredquality": "192",
+            }
+        ],
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # 1. Pre-check video duration to prevent overloading server
+            info = ydl.extract_info(safe_url, download=False)
+            if info and "entries" in info and info["entries"]:
+                info = info["entries"][0]
+
+            title = info.get("title") or "Online Video"
+            duration = info.get("duration")
+
+            if duration and duration > (max_minutes * 60):
+                raise MediaIngestionError(
+                    f"Video duration ({int(duration // 60)} minutes) exceeds the maximum allowed limit of {max_minutes} minutes. Please trim or upload a shorter file.",
+                    code="DURATION_EXCEEDED"
+                )
+
+            # 2. Download audio
+            ydl.process_info(info)
+
+            wav_path = os.path.join(DOWNLOAD_DIR, f"{clean_id}.wav")
+            if not os.path.exists(wav_path):
+                # Search for any generated wav file with matching clean_id prefix
+                candidates = [
+                    os.path.join(DOWNLOAD_DIR, f) for f in os.listdir(DOWNLOAD_DIR)
+                    if f.startswith(clean_id) and f.endswith(".wav")
+                ]
+                if candidates:
+                    wav_path = candidates[0]
+
+            if os.path.exists(wav_path):
+                logger.info(f"[Generic yt-dlp] Successfully downloaded audio to {wav_path}")
+                return wav_path, title
+
+            raise MediaIngestionError(
+                "Unable to process audio from this link. Please download the recording and use Upload File or Paste Transcript.",
+                code="EXTRACTION_FAILED"
+            )
+
+    except MediaIngestionError:
+        raise
+    except yt_dlp.utils.DownloadError as e:
+        err_str = str(e).lower()
+        domain = (urllib.parse.urlparse(safe_url).hostname or "").lower()
+        is_meeting = any(m in domain for m in ("zoom", "teams", "meet", "webex"))
+
+        if any(w in err_str for w in ("login", "sign in", "private", "permission", "unauthorized", "401", "403", "forbidden")):
+            if is_meeting:
+                raise MediaIngestionError(
+                    "This meeting recording requires a sign-in or is private (Zoom, Teams, and Meet recordings usually need a login). Please download the recording and use Upload File.",
+                    code="LOGIN_REQUIRED",
+                    technical_details=str(e)
+                )
+            else:
+                raise MediaIngestionError(
+                    "This link is private. Please download the recording and use Upload File.",
+                    code="LINK_PRIVATE",
+                    technical_details=str(e)
+                )
+        elif "unsupported url" in err_str:
+            raise MediaIngestionError(
+                "This video website is not supported for direct extraction. Please download the recording and use Upload File or Paste Transcript.",
+                code="UNSUPPORTED_SITE",
+                technical_details=str(e)
+            )
+        else:
+            logger.error(f"[Generic yt-dlp Error] {e}")
+            raise MediaIngestionError(
+                "Unable to extract video audio from this URL. Please download the recording and use Upload File or Paste Transcript.",
+                code="EXTRACTION_FAILED",
+                technical_details=str(e)
+            )
+    except Exception as e:
+        logger.error(f"[Generic yt-dlp Unexpected Error] {e}", exc_info=True)
+        raise MediaIngestionError(
+            "An error occurred while processing this video link. Please use Upload File or Paste Transcript.",
+            code="EXTRACTION_FAILED",
+            technical_details=str(e)
+        )
 
 # ── Audio Processing & Chunking ───────────────────────────────────────────────
 
@@ -515,15 +719,22 @@ def process_media_source(
     max_video_minutes: int = 90
 ) -> dict:
     """
-    Orchestrates ingestion across all fallback tiers:
+    Orchestrates ingestion across all sources:
     1. Pasted transcript (immediate)
-    2. YouTube URL:
-       - Tier 1: youtube_transcript_api direct
-       - Tier 2: yt-dlp subtitle-only extraction
-       - Tier 3: yt-dlp audio download + chunking
-    3. Uploaded local file:
-       - Audio conversion + chunking
-    4. If automated YouTube ingestion fails completely, raises clean MediaIngestionError.
+    2. Uploaded local file (conversion + chunking)
+    3. Any URL (routed via classify_url):
+       a) YouTube:
+          - Tier 1: youtube_transcript_api direct
+          - Tier 2: yt-dlp subtitle-only extraction
+          - Tier 3: yt-dlp audio download + chunking
+          - Tier 3.5: Supadata API fallback (if configured)
+       b) Direct media & Cloud Share (Google Drive, Dropbox, OneDrive):
+          - Streaming requests download with size guard & SSRF redirect validation
+          - Duration limit check
+          - 16kHz mono WAV conversion & chunking
+       c) Generic video sites (Vimeo, Loom, Zoom, etc.):
+          - yt-dlp default extractor (audio-only, UUID filenames)
+          - Chunking and Groq transcription
     """
     # Option A: Direct pasted transcript
     if pasted_transcript and pasted_transcript.strip():
@@ -538,6 +749,13 @@ def process_media_source(
 
     # Option B: Uploaded file
     if uploaded_file_path and os.path.exists(uploaded_file_path):
+        duration_sec = get_media_duration_seconds(uploaded_file_path)
+        if duration_sec and duration_sec > (max_video_minutes * 60):
+            raise MediaIngestionError(
+                f"Uploaded video duration ({int(duration_sec // 60)} minutes) exceeds the maximum allowed limit of {max_video_minutes} minutes. Please trim or upload a shorter file.",
+                code="DURATION_EXCEEDED"
+            )
+
         wav_path, title = convert_to_wav(uploaded_file_path)
         chunks = chunk_audio(wav_path)
         return {
@@ -548,63 +766,147 @@ def process_media_source(
             "raw_file": wav_path
         }
 
-    # Option C: Web / YouTube URL
+    # Option C: Web URL (YouTube, Cloud Share, Direct Media, or Generic Video)
     if source and is_url(source):
-        clean_url = normalize_url(source)
-
-        # Tier 1: youtube_transcript_api
-        logger.info("[Ingestion] Tier 1: Attempting direct youtube_transcript_api extraction...")
-        transcript, title, diag1 = extract_youtube_transcript_direct(clean_url, language)
-        if transcript and transcript.strip():
-            return {
-                "type": "transcript",
-                "transcript": transcript.strip(),
-                "title": title or "YouTube Video",
-                "stage_used": "youtube_transcript_api"
-            }
-
-        # Tier 2: yt-dlp subtitles
-        logger.info("[Ingestion] Tier 2: Attempting yt-dlp subtitle-only extraction...")
-        transcript, y_title, diag2 = extract_youtube_subtitles_ytdlp(clean_url)
-        if transcript and transcript.strip():
-            return {
-                "type": "transcript",
-                "transcript": transcript.strip(),
-                "title": y_title or title or "YouTube Video",
-                "stage_used": "ytdlp_subtitles"
-            }
-
-        # Tier 3: yt-dlp audio download
-        logger.info("[Ingestion] Tier 3: Attempting yt-dlp audio download...")
         try:
-            wav_path, a_title = download_youtube_audio(clean_url, max_minutes=max_video_minutes)
+            classification = classify_url(source)
+        except SSRFBlockedError as e:
+            logger.warning(f"[Security SSRF Blocked] URL '{source}': {e}")
+            raise MediaIngestionError(
+                "Access to local or private network addresses is prohibited.",
+                code="SSRF_BLOCKED",
+                technical_details=str(e)
+            )
+
+        link_type = classification["type"]
+        original_url = classification["original_url"]
+        target_url = classification["target_url"]
+        platform_label = classification.get("label", "Video Recording")
+
+        # ── Branch 1: YouTube ────────────────────────────────────────────────
+        if link_type == "youtube":
+            clean_url = normalize_url(original_url)
+
+            # Tier 1: youtube_transcript_api
+            logger.info("[Ingestion] YouTube Tier 1: Attempting direct youtube_transcript_api extraction...")
+            transcript, title, diag1 = extract_youtube_transcript_direct(clean_url, language)
+            if transcript and transcript.strip():
+                return {
+                    "type": "transcript",
+                    "transcript": transcript.strip(),
+                    "title": title or "YouTube Video",
+                    "stage_used": "youtube_transcript_api"
+                }
+
+            # Tier 2: yt-dlp subtitles
+            logger.info("[Ingestion] YouTube Tier 2: Attempting yt-dlp subtitle-only extraction...")
+            transcript, y_title, diag2 = extract_youtube_subtitles_ytdlp(clean_url)
+            if transcript and transcript.strip():
+                return {
+                    "type": "transcript",
+                    "transcript": transcript.strip(),
+                    "title": y_title or title or "YouTube Video",
+                    "stage_used": "ytdlp_subtitles"
+                }
+
+            # Tier 3: yt-dlp audio download
+            logger.info("[Ingestion] YouTube Tier 3: Attempting yt-dlp audio download...")
+            try:
+                wav_path, a_title = download_youtube_audio(clean_url, max_minutes=max_video_minutes)
+                chunks = chunk_audio(wav_path)
+                return {
+                    "type": "audio_chunks",
+                    "chunks": chunks,
+                    "title": a_title or title or "YouTube Video",
+                    "stage_used": "ytdlp_audio",
+                    "raw_file": wav_path
+                }
+            except MediaIngestionError as e:
+                if e.code == "DURATION_EXCEEDED":
+                    raise e
+                logger.error(f"[Ingestion Error] Automated audio download failed: {e.technical_details}")
+
+            # Tier 3.5: Optional Supadata transcript API fallback
+            if os.getenv("SUPADATA_API_KEY"):
+                logger.info("[Ingestion] YouTube Tier 3.5: Attempting Supadata transcript API fallback...")
+                supa_transcript, supa_title, diag_supa = extract_youtube_transcript_supadata(clean_url)
+                if supa_transcript and supa_transcript.strip():
+                    return {
+                        "type": "transcript",
+                        "transcript": supa_transcript.strip(),
+                        "title": supa_title or title or "YouTube Video",
+                        "stage_used": "supadata_api"
+                    }
+
+            # YouTube fallback guidance
+            raise MediaIngestionError(
+                "YouTube blocked automated access from cloud servers for this video. "
+                "Please: (1) Upload the audio/video file directly using 'Upload File', or "
+                "(2) Paste the transcript text into the 'Paste Transcript' tab.",
+                code="YOUTUBE_INGESTION_BLOCKED"
+            )
+
+        # ── Branch 2: Direct Media & Cloud Share ─────────────────────────────
+        elif link_type in ("direct_media", "cloud_share"):
+            max_mb = int(os.getenv("MAX_DOWNLOAD_MB", "200"))
+            logger.info(f"[Ingestion] Streaming direct media from {target_url} (limit: {max_mb} MB)...")
+
+            try:
+                raw_download_path, raw_title = download_direct_media_stream(
+                    target_url,
+                    output_directory=DOWNLOAD_DIR,
+                    max_mb=max_mb,
+                    timeout_seconds=45
+                )
+            except MediaDownloadError as mde:
+                raise MediaIngestionError(str(mde), code=mde.code, technical_details=mde.technical_details)
+
+            # Duration check
+            duration_sec = get_media_duration_seconds(raw_download_path)
+            if duration_sec and duration_sec > (max_video_minutes * 60):
+                if os.path.exists(raw_download_path):
+                    os.remove(raw_download_path)
+                raise MediaIngestionError(
+                    f"Video duration ({int(duration_sec // 60)} minutes) exceeds the maximum allowed limit of {max_video_minutes} minutes. Please trim or upload a shorter file.",
+                    code="DURATION_EXCEEDED"
+                )
+
+            # Convert to 16kHz mono WAV format and chunk
+            wav_path, clean_title = convert_to_wav(raw_download_path)
+            if raw_download_path != wav_path and os.path.exists(raw_download_path):
+                try:
+                    os.remove(raw_download_path)
+                except Exception:
+                    pass
+
             chunks = chunk_audio(wav_path)
             return {
                 "type": "audio_chunks",
                 "chunks": chunks,
-                "title": a_title or title or "YouTube Video",
-                "stage_used": "ytdlp_audio",
+                "title": raw_title or clean_title or platform_label,
+                "stage_used": link_type,
                 "raw_file": wav_path
             }
-        except MediaIngestionError as e:
-            if e.code == "DURATION_EXCEEDED":
-                raise e
-            logger.error(f"[Ingestion Error] Automated audio download failed: {e.technical_details}")
 
-        # Fallback 3: User-facing clean guidance
-        raise MediaIngestionError(
-            "YouTube blocked automated access from cloud servers for this video. "
-            "Please: (1) Upload the audio/video file directly using 'Upload File', or "
-            "(2) Paste the transcript text into the 'Paste Transcript' tab.",
-            code="YOUTUBE_INGESTION_BLOCKED"
-        )
+        # ── Branch 3: Generic Video Site (Vimeo, Loom, Zoom, etc.) ───────────
+        elif link_type == "generic_video":
+            logger.info(f"[Ingestion] Attempting generic extractor for {platform_label} ({original_url})...")
+            wav_path, v_title = download_generic_video_audio(original_url, max_minutes=max_video_minutes)
+            chunks = chunk_audio(wav_path)
+            return {
+                "type": "audio_chunks",
+                "chunks": chunks,
+                "title": v_title or platform_label,
+                "stage_used": "generic_ytdlp",
+                "raw_file": wav_path
+            }
 
-    raise ValueError("No valid input provided. Supply a YouTube URL, upload an audio/video file, or paste a transcript.")
+    raise ValueError("No valid input provided. Supply a video or meeting URL, upload an audio/video file, or paste a transcript.")
 
 # Backwards compatibility helper
 def process_input(source: str) -> list[str]:
     """Legacy helper for downloading/chunking audio."""
     res = process_media_source(source=source)
-    if res["type"] == "audio_chunks":
-        return res["chunks"]
+    if res.get("type") == "audio_chunks":
+        return res.get("chunks", [])
     return []
